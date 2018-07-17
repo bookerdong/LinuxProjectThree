@@ -5,7 +5,12 @@
 #include <unistd.h>
 #include <termios.h>
 #include <string.h>
+#include <pthread.h>
+#include <unistd.h>
 
+char wbuf[50]={0};
+char rbuf[1000]={0};
+static int fd = -1; 
 int set_opt(int fd,int nSpeed, int nBits, char nEvent, int nStop)
 {
 /* 五个参量 fd打开文件 speed设置波特率 bit数据位设置   neent奇偶校验位 stop停止位 */
@@ -81,20 +86,64 @@ switch( nSpeed )
     return 0;
 }
 
+//串口接收函数
+void *ser_rece(void *arg)
+{
+	int n = 0;
+	while(1)
+	{
+		n = read(fd,rbuf,100);
+		if(n > 0)
+		{
+			printf("n > 0\n");
+		}
+		else
+		{
+			printf("n < 0\n");
+		}
+		sleep(5);
+	} 
+	pthread_exit(NULL);
+	
+}
+
 int main(void)
 {
-	////test github
-	// printf("Hello Serail\n");
 	
-	int fd = -1;
+	
+	pthread_t thread1;
+	
 	fd = open("/dev/ttyUSB0",O_RDWR|O_NOCTTY|O_NDELAY);
 	if(fd < 0)
 	{
 		perror("open");
 	}
 	
-	int i = set_opt(fd,921600,8,'N',1);
+	set_opt(fd,921600,8,'N',1);
 	
+	pthread_create(&thread1, NULL,ser_rece, NULL);
+	wbuf[0] = 0x7e;
+	wbuf[1] = 0x05;
+	wbuf[2] = 0x01;
+	wbuf[3] = 0x08;
+	wbuf[4] = 0x0e;
+	wbuf[5] = 0xff;
+	wbuf[6] = 0xff;
+	wbuf[7] = 0x7f;
+	while(1)
+	{
+		int n = write(fd,wbuf,8);
+		if(n < 0)
+		{
+			perror("send");
+		
+		}
+		printf("send\n");
+		sleep(5);
+	}
+	
+	
+	pthread_join(thread1, NULL);
 	close(fd);
 	return 0;
 }
