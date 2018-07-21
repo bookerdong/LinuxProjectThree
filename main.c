@@ -1,149 +1,245 @@
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <termios.h>
-#include <string.h>
-#include <pthread.h>
-#include <unistd.h>
+/*receive.c  Ã»ÓĞÏß³Ì*/
+#include     <stdio.h>      /*±ê×¼ÊäÈëÊä³ö¶¨Òå*/
+#include     <stdlib.h>     /*±ê×¼º¯Êı¿â¶¨Òå*/
+#include     <unistd.h>     /*Unix±ê×¼º¯Êı¶¨Òå*/
+#include     <sys/types.h>  /**/
+#include     <sys/stat.h>   /**/
+#include     <fcntl.h>      /*ÎÄ¼ş¿ØÖÆ¶¨Òå*/
+#include     <termios.h>    /*PPSIXÖÕ¶Ë¿ØÖÆ¶¨Òå*/
+#include     <errno.h>      /*´íÎóºÅ¶¨Òå*/
+#include     <string.h>
+//#include     "uart.h"
+#define  TRUE 0
+#define  FALSE -1
+/***@brief  ÉèÖÃ´®¿ÚÍ¨ĞÅËÙÂÊ
+*@param  fd     ÀàĞÍint  ´ò¿ª´®¿ÚµÄÎÄ¼ş¾ä±ú
+*@param  speed  ÀàĞÍint  ´®¿ÚËÙ¶È
+*@return  void*/
 
-char wbuf[50]={0};
-char rbuf[1000]={0};
-static int fd = -1; 
-int set_opt(int fd,int nSpeed, int nBits, char nEvent, int nStop)
+// int speed_arr[] = {B115200, B38400, B19200, B9600, B4800, B2400, B1200, B300,
+	    // B38400, B19200, B9600, B4800, B2400, B1200, B300, };
+// int name_arr[] = {115200,38400,  19200,  9600,  4800,  2400,  1200,  300,
+	    // 38400,  19200,  9600, 4800, 2400, 1200,  300, };
+	  
+int speed_arr[] = {B230400,B115200, B38400, B19200, B9600, B4800, B2400, B1200, B300 };
+int name_arr[] = {230400,115200,38400,  19200,  9600,  4800,  2400,  1200,  300};	  
+//ÉèÖÃ²¨ÌØÂÊ
+void set_speed(int fd, int speed)
 {
-/* äº”ä¸ªå‚é‡ fdæ‰“å¼€æ–‡ä»¶ speedè®¾ç½®æ³¢ç‰¹ç‡ bitæ•°æ®ä½è®¾ç½®   neentå¥‡å¶æ ¡éªŒä½ stopåœæ­¢ä½ */
-    struct termios newtio,oldtio;
-    if ( tcgetattr( fd,&oldtio) != 0) {
-        perror("SetupSerial 1");
-        return -1;
-    }
-    bzero( &newtio, sizeof( newtio ) );
-    newtio.c_cflag |= CLOCAL | CREAD;
-    newtio.c_cflag &= ~CSIZE;
-    switch( nBits )
-    {
-    case 7:
-        newtio.c_cflag |= CS7;
-    break;
-    case 8:
-        newtio.c_cflag |= CS8;
-    break;
-    }
-    switch( nEvent )
-    {
-    case 'O':
-        newtio.c_cflag |= PARENB;
-        newtio.c_cflag |= PARODD;
-        newtio.c_iflag |= (INPCK | ISTRIP);
-        break;
-    case 'E':
-        newtio.c_iflag |= (INPCK | ISTRIP);
-        newtio.c_cflag |= PARENB;
-        newtio.c_cflag &= ~PARODD;
-        break;
-    case 'N':
-        newtio.c_cflag &= ~PARENB;
-        break;
-    }
-switch( nSpeed )
-    {
-    case 2400:
-        cfsetispeed(&newtio, B2400);
-        cfsetospeed(&newtio, B2400);
-        break;
-    case 4800:
-        cfsetispeed(&newtio, B4800);
-         cfsetospeed(&newtio, B4800);
-        break;
-    case 9600:
-        cfsetispeed(&newtio, B9600);
-        cfsetospeed(&newtio, B9600);
-        break;
-    case 115200:
-        cfsetispeed(&newtio, B115200);
-        cfsetospeed(&newtio, B115200);
-        break;
-    default:
-        cfsetispeed(&newtio, B9600);
-        cfsetospeed(&newtio, B9600);
-        break;
-    }
-    if( nStop == 1 )
-        newtio.c_cflag &= ~CSTOPB;
-    else if ( nStop == 2 )
-    newtio.c_cflag |= CSTOPB;
-    newtio.c_cc[VTIME] = 0;
-    newtio.c_cc[VMIN] = 0;
-    tcflush(fd,TCIFLUSH);
-    if((tcsetattr(fd,TCSANOW,&newtio))!=0)
-    {
-        perror("com set error");
-        return -1;
-    }
-    printf("set done!\n");
-    return 0;
+  int   i;
+  int   status;
+  struct termios   Opt;
+  tcgetattr(fd, &Opt);
+  for ( i= 0;  i < sizeof(speed_arr) / sizeof(int);  i++)
+   {
+   	if  (speed == name_arr[i])
+   	{
+   	    tcflush(fd, TCIOFLUSH);  //Çå¿Õ´®¿ÚµÄ»º³åÇø 
+    	cfsetispeed(&Opt, speed_arr[i]);
+    	cfsetospeed(&Opt, speed_arr[i]);
+    	status = tcsetattr(fd, TCSANOW, &Opt);
+    	if  (status != 0)
+            perror("tcsetattr fd1");
+     	return;
+     	}
+   		tcflush(fd,TCIOFLUSH);//Çå¿Õ´®¿ÚµÄ»º³åÇø 
+   }
 }
-
-//ä¸²å£æ¥æ”¶å‡½æ•°
-void *ser_rece(void *arg)
+/**
+*@brief   ÉèÖÃ´®¿ÚÊı¾İÎ»£¬Í£Ö¹Î»ºÍĞ§ÑéÎ»
+*@param  fd     ÀàĞÍ int  ´ò¿ªµÄ´®¿ÚÎÄ¼ş¾ä±ú*
+*@param  databits ÀàĞÍ int Êı¾İÎ»  È¡ÖµÎª7 »òÕß*
+*@param  stopbits ÀàĞÍ int Í£Ö¹Î»  È¡ÖµÎª1 »òÕß*
+*@param  parity  ÀàĞÍ int  Ğ§ÑéÀàĞÍÈ¡ÖµÎªN,E,O,,S
+*/
+//´ËÀàÊÇ·âºÃµÄ±È½ÏÍêÕûµÄÀà ¿ÉÒÔÖ±½ÓÊ¹ÓÃ 
+static int set_Parity(int fd, int databits, int stopbits, int parity)
 {
-	int n = 0;
-	while(1)
-	{
-		n = read(fd,rbuf,100);
-		if(n > 0)
-		{
-			printf("n > 0\n");
-		}
-		else
-		{
-			printf("n < 0\n");
-		}
-		sleep(5);
+	struct termios options;
+	
+	if(tcgetattr(fd,&options)!=0) 
+	{ 
+		perror("SetupSerial 1");     
+		return(FALSE);  
+	}
+	options.c_cflag &= ~CSIZE;
+	
+	switch (databits) /*ÉèÖÃÊı¾İÎ»Êı*/
+	{   
+		case 7:		
+			options.c_cflag |= CS7; 
+			break;
+		case 8:     
+			options.c_cflag |= CS8;
+			break;   
+		default:    
+			fprintf(stderr,"Unsupported data size\n"); return (FALSE);  
+	}
+	//ÉèÖÃĞ£ÑéÀàĞÍ
+	switch (parity) 
+	{   
+		case 'n':
+		case 'N':    
+			options.c_cflag &= ~PARENB;   /* Clear parity enable */
+			options.c_iflag &= ~INPCK;     /* Enable parity checking */ 
+			break;  
+		case 'o':   
+		case 'O':     
+			options.c_cflag |= (PARODD | PARENB); /* ÉèÖÃÎªÆæĞ§Ñé*/  
+			options.c_iflag |= INPCK;             /* Disnable parity checking */ 
+			break;  
+		case 'e':  
+		case 'E':   
+			options.c_cflag |= PARENB;     /* Enable parity */    
+			options.c_cflag &= ~PARODD;   /* ×ª»»ÎªÅ¼Ğ§Ñé*/     
+			options.c_iflag |= INPCK;       /* Disnable parity checking */
+			break;
+		case 'S': 
+		case 's':  /*as no parity*/   
+	    		options.c_cflag &= ~PARENB;
+			options.c_cflag &= ~CSTOPB;break;  
+		default:   
+			fprintf(stderr,"Unsupported parity\n");    
+			return (FALSE);  
 	} 
-	pthread_exit(NULL);
+	 
+	//ÉèÖÃÍ£Ö¹Î»  
+	switch (stopbits)
+	{   
+		case 1:
+			options.c_cflag &= ~CSTOPB;
+			break;  
+		case 2:    
+			options.c_cflag |= CSTOPB;  
+	   		break;
+		default:    
+		 	fprintf(stderr,"Unsupported stop bits\n");  
+		 	return (FALSE); 
+	} 
 	
+	/* Set input parity option */ 
+	if (parity != 'n')options.c_iflag |= INPCK ; 
+	//ÇåbitÎ»  ¹Ø±Õ×Ö·ûÓ³Éä 0x0a 0x0d
+	options.c_iflag &= ~(INLCR|ICRNL);
+	//ÇåbitÎ»  ¹Ø±ÕÁ÷¿Ø×Ö·û 0x11 0x13 
+	options.c_iflag &= ~(IXON);
+	
+	//ĞèÒª×¢ÒâµÄÊÇ:
+	//Èç¹û²»ÊÇ¿ª·¢ÖÕ¶ËÖ®ÀàµÄ£¬Ö»ÊÇ´®¿Ú´«ÊäÊı¾İ£¬¶ø²»ĞèÒª´®¿ÚÀ´´¦Àí£¬ÄÇÃ´Ê¹ÓÃÔ­Ê¼Ä£Ê½(Raw Mode)·½Ê½À´Í¨Ñ¶£¬ÉèÖÃ·½Ê½ÈçÏÂ£º 
+	options.c_lflag  &= ~(ICANON | ECHO | ECHOE | ISIG);  /*Input*/
+	options.c_oflag  &= ~OPOST;   /*Output*/
+
+	tcflush(fd,TCIFLUSH);
+	options.c_cc[VTIME]=100;//ÉèÖÃ³¬Ê±10Ãë
+	options.c_cc[VMIN] = 0; /* Update the options and do it NOW */
+	if (tcsetattr(fd,TCSANOW,&options) != 0)   
+	{ 
+		perror("SetupSerial 3");   
+		return (FALSE);  
+	} 
+	return (TRUE);  
+}
+/**
+*@breif ´ò¿ª´®¿Ú
+*/
+int OpenDev(char *Dev)
+{
+	int	fd = open( Dev, O_RDWR| O_NOCTTY | O_NDELAY );         //
+	if (-1 == fd)
+		{ /*ÉèÖÃÊı¾İÎ»Êı*/
+			perror("Can't Open Serial Port");
+			return -1;
+		}
+	return fd;
 }
 
-int main(void)
+/**
+*@breif 	main()
+*/
+//Ö÷º¯Êı 
+int main(int argc, char **argv)
 {
+	int fd;  //´ò¿ª´®¿ÚµÄÎÄ¼ş¾ä±ú
+	int nread,nreads;
+	//ÉèÖÃ½ÓÊÕ»º³åÇøµÄ´óĞ¡
+	char buff[1024];
+	//¿ÉÒÔÒ»¸öÒ»¸ö×Ö½ÚµÄ½ÓÊÕ 
+	char uart_0=0;
 	
+	//·¢ËÍÒ»¸ö×Ö·û´® 
+	char buffs[]="Hello\n";
+	//·¢ËÍÒ»×é16½øÖÆµÄÊı 
+	char buff2[1024];
+
+	//COM1´®¿ÚÎÄ¼ş	
+	char *dev ="/dev/ttyUSB0";
+	//´ò¿ª´®¿ÚÎÄ¼ş 
+	fd = OpenDev(dev);
 	
-	pthread_t thread1;
-	
-	fd = open("/dev/ttyUSB0",O_RDWR|O_NOCTTY|O_NDELAY);
-	if(fd < 0)
+	//Èç¹ûÎÄ¼ş´ò¿ª³É¹¦ 
+	if (fd>0)
 	{
-		perror("open");
+    	set_speed(fd,230400);//ÉèÖÃ²¨ÌØÂÊ	
+	}
+	else
+	{
+		printf("Can't Open Serial Port!\n");
+		exit(0);
 	}
 	
-	set_opt(fd,921600,8,'N',1);
+	//ÉèÖÃ´®¿ÚµÄÊôĞÔ 
+	if (set_Parity(fd,8,1,'N')== FALSE)
+    {
+    	printf("Set Parity Error\n");
+    	exit(1);
+  	}
+  	
+  	//ÓÃ´®¿Ú·¢ËÍ16½øÖÆÊıµÄÊµÑé 
+	buff2[0]=0xff;
+	buff2[1]=0xfe;
+	//buff2[2]='\0';
 	
-	pthread_create(&thread1, NULL,ser_rece, NULL);
-	wbuf[0] = 0x7e;
-	wbuf[1] = 0x05;
-	wbuf[2] = 0x01;
-	wbuf[3] = 0x08;
-	wbuf[4] = 0x0e;
-	wbuf[5] = 0xff;
-	wbuf[6] = 0xff;
-	wbuf[7] = 0x7f;
-	while(1)
-	{
-		int n = write(fd,wbuf,8);
-		if(n < 0)
-		{
-			perror("send");
-		
-		}
-		printf("send\n");
-		sleep(5);
-	}
+	//ÓÃ´®¿Ú·¢ËÍ×Ö·û´®µÄÊµÑé 
+	//nreads=write(fd,buffs,sizeof(buffs));
+	//ÓÃ´®¿Ú·¢ËÍ16½øÖÆÊıµÄÊµÑé 
+	nreads=write(fd,buff2,2);
 	
-	
-	pthread_join(thread1, NULL);
-	close(fd);
-	return 0;
+  	//Ñ­»·½ÓÊÕ´®¿ÚµÄÊı¾İ 
+    while(1)
+  	{
+  		//Èç¹û´®¿Ú»º³åÇøÖĞÓĞÊı¾İ 
+		if((nread = read(fd,buff,1024))>0)
+   		{
+   			//Èç¹ûÊÇ×Ö·û´®ÓÃ´Ë·½·¨ÏÔÊ¾ 
+     	  	printf("\n%s",buff);
+     	  	
+			/*
+     	  	//Èç¹û¶Ô·½·¢ËÍµÄÊÇ16½øÖÆµÄÊı¿ÉÒÔÓÃ´Ë·½·¨½ÓÊÕ 
+  	  	    printf("\n%d",buff[1]);
+    	  	printf("\n%d",buff[2]);
+    	    printf("\n%d",buff[3]);
+    	    printf("\n%d",buff[4]);
+    	  	printf("\n%d",buff[5]);
+    	 	printf("\n%d",buff[6]);
+    	  	printf("\n%d",buff[7]);
+    	 	printf("\n%d",buff[8]);
+	 	    printf("\n%d",buff[9]);
+			*/
+			//uart_0=0;
+    
+    		//Çå¿Õ´®¿ÚµÄ»º³åÇø 
+			tcflush(fd,TCIFLUSH);
+			//Çå¿ÕÊı×é 
+      		bzero(buff,1024);
+   	 	}   
+   	 	else
+   	 	{
+	    	usleep(1); 
+   	 	}
+   	}
+   	
+   	//¹Ø±Õ´®¿ÚÎÄ¼ş 
+    close(fd);
+    exit(0);
 }
+
