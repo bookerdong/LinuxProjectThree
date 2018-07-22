@@ -1,19 +1,19 @@
-/*receive.c  Ã»ÓĞÏß³Ì*/
-#include     <stdio.h>      /*±ê×¼ÊäÈëÊä³ö¶¨Òå*/
-#include     <stdlib.h>     /*±ê×¼º¯Êı¿â¶¨Òå*/
-#include     <unistd.h>     /*Unix±ê×¼º¯Êı¶¨Òå*/
+ï»¿/*receive.c  æ²¡æœ‰çº¿ç¨‹*/
+#include     <stdio.h>      /*æ ‡å‡†è¾“å…¥è¾“å‡ºå®šä¹‰*/
+#include     <stdlib.h>     /*æ ‡å‡†å‡½æ•°åº“å®šä¹‰*/
+#include     <unistd.h>     /*Unixæ ‡å‡†å‡½æ•°å®šä¹‰*/
 #include     <sys/types.h>  /**/
 #include     <sys/stat.h>   /**/
-#include     <fcntl.h>      /*ÎÄ¼ş¿ØÖÆ¶¨Òå*/
-#include     <termios.h>    /*PPSIXÖÕ¶Ë¿ØÖÆ¶¨Òå*/
-#include     <errno.h>      /*´íÎóºÅ¶¨Òå*/
+#include     <fcntl.h>      /*æ–‡ä»¶æ§åˆ¶å®šä¹‰*/
+#include     <termios.h>    /*PPSIXç»ˆç«¯æ§åˆ¶å®šä¹‰*/
+#include     <errno.h>      /*é”™è¯¯å·å®šä¹‰*/
 #include     <string.h>
-//#include     "uart.h"
+#include     <pthread.h>
 #define  TRUE 0
 #define  FALSE -1
-/***@brief  ÉèÖÃ´®¿ÚÍ¨ĞÅËÙÂÊ
-*@param  fd     ÀàĞÍint  ´ò¿ª´®¿ÚµÄÎÄ¼ş¾ä±ú
-*@param  speed  ÀàĞÍint  ´®¿ÚËÙ¶È
+/***@brief  è®¾ç½®ä¸²å£é€šä¿¡é€Ÿç‡
+*@param  fd     ç±»å‹int  æ‰“å¼€ä¸²å£çš„æ–‡ä»¶å¥æŸ„
+*@param  speed  ç±»å‹int  ä¸²å£é€Ÿåº¦
 *@return  void*/
 
 // int speed_arr[] = {B115200, B38400, B19200, B9600, B4800, B2400, B1200, B300,
@@ -21,9 +21,18 @@
 // int name_arr[] = {115200,38400,  19200,  9600,  4800,  2400,  1200,  300,
 	    // 38400,  19200,  9600, 4800, 2400, 1200,  300, };
 	  
-int speed_arr[] = {B230400,B115200, B38400, B19200, B9600, B4800, B2400, B1200, B300 };
-int name_arr[] = {230400,115200,38400,  19200,  9600,  4800,  2400,  1200,  300};	  
-//ÉèÖÃ²¨ÌØÂÊ
+int speed_arr[] = {B921600,B460800,B230400,B115200, B38400, B19200, B9600, B4800, B2400, B1200, B300 };
+int name_arr[] = {921600,460800,230400,115200,38400,  19200,  9600,  4800,  2400,  1200,  300};
+
+	int	fd;  //æ‰“å¼€ä¸²å£çš„æ–‡ä»¶å¥æŸ„
+	int nread,nreads;
+	//è®¾ç½®æ¥æ”¶ç¼“å†²åŒºçš„å¤§å°
+	char rbuff[2048];
+	//å¯ä»¥ä¸€ä¸ªä¸€ä¸ªå­—èŠ‚çš„æ¥æ”¶ 
+	char uart_0=0;
+	
+	
+//è®¾ç½®æ³¢ç‰¹ç‡
 void set_speed(int fd, int speed)
 {
   int   i;
@@ -34,7 +43,7 @@ void set_speed(int fd, int speed)
    {
    	if  (speed == name_arr[i])
    	{
-   	    tcflush(fd, TCIOFLUSH);  //Çå¿Õ´®¿ÚµÄ»º³åÇø 
+   	    tcflush(fd, TCIOFLUSH);  //æ¸…ç©ºä¸²å£çš„ç¼“å†²åŒº 
     	cfsetispeed(&Opt, speed_arr[i]);
     	cfsetospeed(&Opt, speed_arr[i]);
     	status = tcsetattr(fd, TCSANOW, &Opt);
@@ -42,17 +51,17 @@ void set_speed(int fd, int speed)
             perror("tcsetattr fd1");
      	return;
      	}
-   		tcflush(fd,TCIOFLUSH);//Çå¿Õ´®¿ÚµÄ»º³åÇø 
+   		tcflush(fd,TCIOFLUSH);//æ¸…ç©ºä¸²å£çš„ç¼“å†²åŒº 
    }
 }
 /**
-*@brief   ÉèÖÃ´®¿ÚÊı¾İÎ»£¬Í£Ö¹Î»ºÍĞ§ÑéÎ»
-*@param  fd     ÀàĞÍ int  ´ò¿ªµÄ´®¿ÚÎÄ¼ş¾ä±ú*
-*@param  databits ÀàĞÍ int Êı¾İÎ»  È¡ÖµÎª7 »òÕß*
-*@param  stopbits ÀàĞÍ int Í£Ö¹Î»  È¡ÖµÎª1 »òÕß*
-*@param  parity  ÀàĞÍ int  Ğ§ÑéÀàĞÍÈ¡ÖµÎªN,E,O,,S
+*@brief   è®¾ç½®ä¸²å£æ•°æ®ä½ï¼Œåœæ­¢ä½å’Œæ•ˆéªŒä½
+*@param  fd     ç±»å‹ int  æ‰“å¼€çš„ä¸²å£æ–‡ä»¶å¥æŸ„*
+*@param  databits ç±»å‹ int æ•°æ®ä½  å–å€¼ä¸º7 æˆ–è€…*
+*@param  stopbits ç±»å‹ int åœæ­¢ä½  å–å€¼ä¸º1 æˆ–è€…*
+*@param  parity  ç±»å‹ int  æ•ˆéªŒç±»å‹å–å€¼ä¸ºN,E,O,,S
 */
-//´ËÀàÊÇ·âºÃµÄ±È½ÏÍêÕûµÄÀà ¿ÉÒÔÖ±½ÓÊ¹ÓÃ 
+//æ­¤ç±»æ˜¯å°å¥½çš„æ¯”è¾ƒå®Œæ•´çš„ç±» å¯ä»¥ç›´æ¥ä½¿ç”¨ 
 static int set_Parity(int fd, int databits, int stopbits, int parity)
 {
 	struct termios options;
@@ -64,7 +73,7 @@ static int set_Parity(int fd, int databits, int stopbits, int parity)
 	}
 	options.c_cflag &= ~CSIZE;
 	
-	switch (databits) /*ÉèÖÃÊı¾İÎ»Êı*/
+	switch (databits) /*è®¾ç½®æ•°æ®ä½æ•°*/
 	{   
 		case 7:		
 			options.c_cflag |= CS7; 
@@ -75,7 +84,7 @@ static int set_Parity(int fd, int databits, int stopbits, int parity)
 		default:    
 			fprintf(stderr,"Unsupported data size\n"); return (FALSE);  
 	}
-	//ÉèÖÃĞ£ÑéÀàĞÍ
+	//è®¾ç½®æ ¡éªŒç±»å‹
 	switch (parity) 
 	{   
 		case 'n':
@@ -85,13 +94,13 @@ static int set_Parity(int fd, int databits, int stopbits, int parity)
 			break;  
 		case 'o':   
 		case 'O':     
-			options.c_cflag |= (PARODD | PARENB); /* ÉèÖÃÎªÆæĞ§Ñé*/  
+			options.c_cflag |= (PARODD | PARENB); /* è®¾ç½®ä¸ºå¥‡æ•ˆéªŒ*/  
 			options.c_iflag |= INPCK;             /* Disnable parity checking */ 
 			break;  
 		case 'e':  
 		case 'E':   
 			options.c_cflag |= PARENB;     /* Enable parity */    
-			options.c_cflag &= ~PARODD;   /* ×ª»»ÎªÅ¼Ğ§Ñé*/     
+			options.c_cflag &= ~PARODD;   /* è½¬æ¢ä¸ºå¶æ•ˆéªŒ*/     
 			options.c_iflag |= INPCK;       /* Disnable parity checking */
 			break;
 		case 'S': 
@@ -103,7 +112,7 @@ static int set_Parity(int fd, int databits, int stopbits, int parity)
 			return (FALSE);  
 	} 
 	 
-	//ÉèÖÃÍ£Ö¹Î»  
+	//è®¾ç½®åœæ­¢ä½  
 	switch (stopbits)
 	{   
 		case 1:
@@ -119,18 +128,18 @@ static int set_Parity(int fd, int databits, int stopbits, int parity)
 	
 	/* Set input parity option */ 
 	if (parity != 'n')options.c_iflag |= INPCK ; 
-	//ÇåbitÎ»  ¹Ø±Õ×Ö·ûÓ³Éä 0x0a 0x0d
+	//æ¸…bitä½  å…³é—­å­—ç¬¦æ˜ å°„ 0x0a 0x0d
 	options.c_iflag &= ~(INLCR|ICRNL);
-	//ÇåbitÎ»  ¹Ø±ÕÁ÷¿Ø×Ö·û 0x11 0x13 
+	//æ¸…bitä½  å…³é—­æµæ§å­—ç¬¦ 0x11 0x13 
 	options.c_iflag &= ~(IXON);
 	
-	//ĞèÒª×¢ÒâµÄÊÇ:
-	//Èç¹û²»ÊÇ¿ª·¢ÖÕ¶ËÖ®ÀàµÄ£¬Ö»ÊÇ´®¿Ú´«ÊäÊı¾İ£¬¶ø²»ĞèÒª´®¿ÚÀ´´¦Àí£¬ÄÇÃ´Ê¹ÓÃÔ­Ê¼Ä£Ê½(Raw Mode)·½Ê½À´Í¨Ñ¶£¬ÉèÖÃ·½Ê½ÈçÏÂ£º 
+	//éœ€è¦æ³¨æ„çš„æ˜¯:
+	//å¦‚æœä¸æ˜¯å¼€å‘ç»ˆç«¯ä¹‹ç±»çš„ï¼Œåªæ˜¯ä¸²å£ä¼ è¾“æ•°æ®ï¼Œè€Œä¸éœ€è¦ä¸²å£æ¥å¤„ç†ï¼Œé‚£ä¹ˆä½¿ç”¨åŸå§‹æ¨¡å¼(Raw Mode)æ–¹å¼æ¥é€šè®¯ï¼Œè®¾ç½®æ–¹å¼å¦‚ä¸‹ï¼š 
 	options.c_lflag  &= ~(ICANON | ECHO | ECHOE | ISIG);  /*Input*/
 	options.c_oflag  &= ~OPOST;   /*Output*/
 
 	tcflush(fd,TCIFLUSH);
-	options.c_cc[VTIME]=100;//ÉèÖÃ³¬Ê±10Ãë
+	options.c_cc[VTIME]=100;//è®¾ç½®è¶…æ—¶10ç§’
 	options.c_cc[VMIN] = 0; /* Update the options and do it NOW */
 	if (tcsetattr(fd,TCSANOW,&options) != 0)   
 	{ 
@@ -140,46 +149,71 @@ static int set_Parity(int fd, int databits, int stopbits, int parity)
 	return (TRUE);  
 }
 /**
-*@breif ´ò¿ª´®¿Ú
+*@breif æ‰“å¼€ä¸²å£
 */
 int OpenDev(char *Dev)
 {
 	int	fd = open( Dev, O_RDWR| O_NOCTTY | O_NDELAY );         //
 	if (-1 == fd)
-		{ /*ÉèÖÃÊı¾İÎ»Êı*/
+		{ /*è®¾ç½®æ•°æ®ä½æ•°*/
 			perror("Can't Open Serial Port");
 			return -1;
 		}
 	return fd;
 }
 
+// Function: Thread signals when timer has expired
+void *uartrcv(void *arg){
+
+	// Run while loop until timer has expired 
+	while(1)
+	{
+  		//å¦‚æœä¸²å£ç¼“å†²åŒºä¸­æœ‰æ•°æ® 
+		if((nread = read(fd,rbuff,2048))>0)
+   		{
+			printf("---------------------------------------------------nread = %d\n",nread);
+   			//å¦‚æœæ˜¯å­—ç¬¦ä¸²ç”¨æ­¤æ–¹æ³•æ˜¾ç¤º 
+     	  	// printf("\n%s\n",rbuff);
+			for(int i = 0;i < nread;i++)
+			{
+				printf("%d ",rbuff[i]);
+			}
+    
+    		//æ¸…ç©ºä¸²å£çš„ç¼“å†²åŒº 
+			tcflush(fd,TCIFLUSH);
+			//æ¸…ç©ºæ•°ç»„ 
+      		bzero(rbuff,2048);
+   	 	}   
+   	 	else
+   	 	{
+	    	usleep(1); 
+   	 	}
+		
+	} // End while statement
+	pthread_exit(NULL);
+}
+
 /**
 *@breif 	main()
 */
-//Ö÷º¯Êı 
+//ä¸»å‡½æ•° 
 int main(int argc, char **argv)
 {
-	int fd;  //´ò¿ª´®¿ÚµÄÎÄ¼ş¾ä±ú
-	int nread,nreads;
-	//ÉèÖÃ½ÓÊÕ»º³åÇøµÄ´óĞ¡
-	char buff[1024];
-	//¿ÉÒÔÒ»¸öÒ»¸ö×Ö½ÚµÄ½ÓÊÕ 
-	char uart_0=0;
-	
-	//·¢ËÍÒ»¸ö×Ö·û´® 
-	char buffs[]="Hello\n";
-	//·¢ËÍÒ»×é16½øÖÆµÄÊı 
-	char buff2[1024];
+	//å‘é€ä¸€ç»„16è¿›åˆ¶çš„æ•° 
+	char wbuff[1024];
 
-	//COM1´®¿ÚÎÄ¼ş	
+	//çº¿ç¨‹ç›¸å…³
+	pthread_t thread1;
+	
+	//COM1ä¸²å£æ–‡ä»¶	
 	char *dev ="/dev/ttyUSB0";
-	//´ò¿ª´®¿ÚÎÄ¼ş 
+	//æ‰“å¼€ä¸²å£æ–‡ä»¶ 
 	fd = OpenDev(dev);
 	
-	//Èç¹ûÎÄ¼ş´ò¿ª³É¹¦ 
+	//å¦‚æœæ–‡ä»¶æ‰“å¼€æˆåŠŸ 
 	if (fd>0)
 	{
-    	set_speed(fd,230400);//ÉèÖÃ²¨ÌØÂÊ	
+    	set_speed(fd,921600);//è®¾ç½®æ³¢ç‰¹ç‡	
 	}
 	else
 	{
@@ -187,58 +221,44 @@ int main(int argc, char **argv)
 		exit(0);
 	}
 	
-	//ÉèÖÃ´®¿ÚµÄÊôĞÔ 
+	//è®¾ç½®ä¸²å£çš„å±æ€§ 
 	if (set_Parity(fd,8,1,'N')== FALSE)
     {
     	printf("Set Parity Error\n");
     	exit(1);
   	}
+	
+	//åˆ›å»ºçº¿ç¨‹
+	pthread_create(&thread1, NULL, uartrcv, NULL);
   	
-  	//ÓÃ´®¿Ú·¢ËÍ16½øÖÆÊıµÄÊµÑé 
-	buff2[0]=0xff;
-	buff2[1]=0xfe;
-	//buff2[2]='\0';
-	
-	//ÓÃ´®¿Ú·¢ËÍ×Ö·û´®µÄÊµÑé 
-	//nreads=write(fd,buffs,sizeof(buffs));
-	//ÓÃ´®¿Ú·¢ËÍ16½øÖÆÊıµÄÊµÑé 
-	nreads=write(fd,buff2,2);
-	
-  	//Ñ­»·½ÓÊÕ´®¿ÚµÄÊı¾İ 
+	//æ§åˆ¶å™¨æ‰“å°å­—ç¬¦ä¸²
+	// wbuff[0]=0x7e;
+	// wbuff[1]=0x05;
+	// wbuff[2]=0x01;
+	// wbuff[3]=0x08;
+	// wbuff[4]=0x0e;
+	// wbuff[5]=0xff;
+	// wbuff[6]=0xff;
+	// wbuff[7]=0x7f;
+
+	//è·å–å…¨éƒ¨è®¾å¤‡ä¿¡æ¯
+	wbuff[0]=0x7e;
+	wbuff[1]=0x07;
+	wbuff[2]=0x00;
+	wbuff[3]=0x01;
+	wbuff[4]=0x00;
+	wbuff[5]=0x00;
+	wbuff[6]=0xff;
+	wbuff[7]=0xff;
+	wbuff[8]=0x7f;
+  	//å¾ªç¯æ¥æ”¶ä¸²å£çš„æ•°æ® 
     while(1)
   	{
-  		//Èç¹û´®¿Ú»º³åÇøÖĞÓĞÊı¾İ 
-		if((nread = read(fd,buff,1024))>0)
-   		{
-   			//Èç¹ûÊÇ×Ö·û´®ÓÃ´Ë·½·¨ÏÔÊ¾ 
-     	  	printf("\n%s",buff);
-     	  	
-			/*
-     	  	//Èç¹û¶Ô·½·¢ËÍµÄÊÇ16½øÖÆµÄÊı¿ÉÒÔÓÃ´Ë·½·¨½ÓÊÕ 
-  	  	    printf("\n%d",buff[1]);
-    	  	printf("\n%d",buff[2]);
-    	    printf("\n%d",buff[3]);
-    	    printf("\n%d",buff[4]);
-    	  	printf("\n%d",buff[5]);
-    	 	printf("\n%d",buff[6]);
-    	  	printf("\n%d",buff[7]);
-    	 	printf("\n%d",buff[8]);
-	 	    printf("\n%d",buff[9]);
-			*/
-			//uart_0=0;
-    
-    		//Çå¿Õ´®¿ÚµÄ»º³åÇø 
-			tcflush(fd,TCIFLUSH);
-			//Çå¿ÕÊı×é 
-      		bzero(buff,1024);
-   	 	}   
-   	 	else
-   	 	{
-	    	usleep(1); 
-   	 	}
+		nreads=write(fd,wbuff,sizeof(wbuff));
+		sleep(2);
    	}
-   	
-   	//¹Ø±Õ´®¿ÚÎÄ¼ş 
+	pthread_join(thread1, NULL);
+   	//å…³é—­ä¸²å£æ–‡ä»¶ 
     close(fd);
     exit(0);
 }
